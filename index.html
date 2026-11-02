@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Municipal Annexation CBA Tool</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0284c7',
+                            600: '#0369a1',
+                            700: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Draw CSS & JS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+    <!-- Turf.js for spatial calculations -->
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .leaflet-draw-toolbar a { background-color: white !important; }
+        .dark .leaflet-draw-toolbar a { background-color: #1f2937 !important; color: white !important; }
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 h-full flex flex-col transition-colors duration-200">
+
+    <!-- Header Navigation -->
+    <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex flex-wrap items-center justify-between gap-4 sticky top-0 z-50 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="bg-brand-600 text-white p-2 rounded-lg shadow-md">
+                <i class="fa-solid me-0 fa-city text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold leading-tight">Municipal Annexation CBA Tool</h1>
+                <p class="text-xs text-slate-500 dark:text-slate-400">Fiscal Impact & Boundary Expansion Feasibility Model</p>
+            </div>
+        </div>
+
+        <!-- Toolbar Actions -->
+        <div class="flex items-center flex-wrap gap-2">
+            <!-- Preset Selector -->
+            <div class="relative">
+                <select id="presetSelect" onchange="loadPresetScenario(this.value)" class="bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 text-xs rounded-lg px-3 py-2 font-medium focus:ring-2 focus:ring-brand-500 outline-none">
+                    <option value="" disabled selected>⚡ Load Preset Scenario...</option>
+                    <option value="residential">🏡 Suburban Residential Subdivision</option>
+                    <option value="commercial">🛍️ Commercial Retail Strip Corridor</option>
+                    <option value="industrial">🏭 Light Industrial & Logistics Park</option>
+                    <option value="rural">🌾 Low-Density Rural Residential</option>
+                </select>
+            </div>
+
+            <!-- Dark/Light Mode Toggle -->
+            <button onclick="toggleDarkMode()" class="p-2 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 transition-colors" title="Toggle Theme">
+                <i id="themeIcon" class="fa-solid fa-moon"></i>
+            </button>
+
+            <!-- Export Buttons -->
+            <button onclick="exportCSV()" class="flex items-center space-x-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 px-3 py-2 rounded-lg text-xs font-semibold transition">
+                <i class="fa-solid fa-file-csv"></i>
+                <span class="hidden sm:inline">Export CSV</span>
+            </button>
+            <button onclick="window.print()" class="flex items-center space-x-1 bg-brand-600 hover:bg-brand-700 text-white px-3 py-2 rounded-lg text-xs font-semibold shadow-sm transition">
+                <i class="fa-solid fa-print"></i>
+                <span>Print Report</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 p-4 overflow-y-auto lg:overflow-hidden">
+
+        <!-- Left Column: Map & Spatial Inputs (5 Cols) -->
+        <section class="lg:col-span-5 flex flex-col space-y-4 h-full min-h-[500px] lg:min-h-0">
+            <!-- Interactive Map Container -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col h-full overflow-hidden">
+                <div class="p-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-map-location-dot text-brand-600 dark:text-brand-500"></i>
+                        <h2 class="font-semibold text-sm">Annexation Target Area (GIS Boundary)</h2>
+                    </div>
+                    <span id="mapStatus" class="text-xs px-2 py-0.5 rounded-full bg-brand-100 dark:bg-brand-900/50 text-brand-700 dark:text-brand-300 font-medium">Draw polygon or edit acres</span>
+                </div>
+                
+                <div id="map" class="flex-1 min-h-[300px] z-10"></div>
+                
+                <div class="p-3 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2 text-xs">
+                    <div class="bg-white dark:bg-slate-700 p-2 rounded border border-slate-200 dark:border-slate-600">
+                        <span class="text-slate-500 dark:text-slate-400 block">Calculated Area</span>
+                        <span id="calculatedAcres" class="font-bold text-sm text-slate-800 dark:text-slate-100">0.0</span> <span class="text-slate-500">Acres</span>
+                    </div>
+                    <div class="bg-white dark:bg-slate-700 p-2 rounded border border-slate-200 dark:border-slate-600">
+                        <span class="text-slate-500 dark:text-slate-400 block">Boundary Perimeter</span>
+                        <span id="calculatedPerimeter" class="font-bold text-sm text-slate-800 dark:text-slate-100">0.00</span> <span class="text-slate-500">Miles</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Center Column: Data Input Form (4 Cols) -->
+        <section class="lg:col-span-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col h-full overflow-hidden">
+            <div class="p-3 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-sliders text-brand-600 dark:text-brand-500"></i>
+                    <h2 class="font-semibold text-sm">Fiscal Parameters & Modeling Inputs</h2>
+                </div>
+                <button onclick="calculateMetrics()" class="text-xs text-brand-600 hover:text-brand-700 dark:text-brand-400 font-semibold">Recalculate</button>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 space-y-5">
+                
+                <!-- Section 1: Demographics & Land Use -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-users text-slate-400"></i> Land & Demographics
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Land Area (Acres)</label>
+                            <input type="number" id="inputAcres" value="120" step="0.1" onchange="syncAcresInput()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Est. Population</label>
+                            <input type="number" id="inputPopulation" value="450" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Residential Units</label>
+                            <input type="number" id="inputResUnits" value="150" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Commercial Parcels</label>
+                            <input type="number" id="inputComParcels" value="8" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Road Lane-Miles to Maintain</label>
+                            <input type="number" id="inputRoadMiles" value="3.5" step="0.1" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200 dark:border-slate-700">
+
+                <!-- Section 2: Revenue Drivers (Annual) -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-sack-dollar"></i> Annual Revenues ($)
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Total Assessed Value ($)</label>
+                            <input type="number" id="inputAssessedValue" value="45000000" step="50000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">City Tax Rate (per $100)</label>
+                            <input type="number" id="inputTaxRate" value="0.65" step="0.01" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Sales Tax Share ($/yr)</label>
+                            <input type="number" id="inputSalesTax" value="85000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Utility Fees & Surcharges ($)</label>
+                            <input type="number" id="inputUtilityRev" value="42000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Licenses, Permits & Fees ($/yr)</label>
+                            <input type="number" id="inputPermitRev" value="18000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200 dark:border-slate-700">
+
+                <!-- Section 3: Operating Expenditures (Annual) -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-hand-holding-dollar"></i> Annual Operating Expenses ($)
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Police & Fire ($/Capita)</label>
+                            <input type="number" id="inputPublicSafetyCapita" value="320" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Road Maint. ($/Mile)</label>
+                            <input type="number" id="inputRoadMaintMile" value="8500" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Parks & Sanitation ($/Capita)</label>
+                            <input type="number" id="inputParksSanitationCapita" value="95" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">General Admin Overhead ($)</label>
+                            <input type="number" id="inputAdminOverhead" value="25000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200 dark:border-slate-700">
+
+                <!-- Section 4: One-Time Capital Investment & Model Settings -->
+                <div class="space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-piggy-bank"></i> Capital Costs & Horizon
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Upfront Infrastructure ($)</label>
+                            <input type="number" id="inputCapitalCost" value="850000" step="10000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Upfront Impact Fees/Grants ($)</label>
+                            <input type="number" id="inputOneTimeGrant" value="250000" step="5000" oninput="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Analysis Horizon (Years)</label>
+                            <select id="inputHorizon" onchange="calculateMetrics()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded px-2.5 py-1.5 focus:ring-1 focus:ring-brand-500 outline-none">
+                                <option value="5">5 Years</option>
+                                <option value="10" selected>10 Years</option>
+                                <option value="15">15 Years</option>
+                                <option value="20">20 Years</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-slate-600 dark:text-slate-300 font-medium mb-1">Discount Rate (%): <span id="discountVal" class="font-bold">3.5%</span></label>
+                            <input type="range" id="inputDiscountRate" min="0" max="10" step="0.25" value="3.5" oninput="document.getElementById('discountVal').innerText = this.value + '%'; calculateMetrics()" class="w-full accent-brand-600 mt-2">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Right Column: Feasibility Results & Visualizations (3 Cols) -->
+        <section class="lg:col-span-3 flex flex-col space-y-4 h-full overflow-y-auto">
+            
+            <!-- Dynamic Recommendation Box -->
+            <div id="recommendationCard" class="p-4 rounded-xl border transition-all duration-300 shadow-sm flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Annexation Feasibility</span>
+                        <i id="recIcon" class="fa-solid text-xl"></i>
+                    </div>
+                    <div id="recBadge" class="text-lg font-black leading-tight mb-1">Evaluating...</div>
+                    <p id="recDescription" class="text-xs leading-relaxed opacity-90 mb-3">Model calculation in progress...</p>
+                </div>
+                
+                <!-- Quick KPI Summary Grid inside Recommendation -->
+                <div class="grid grid-cols-2 gap-2 border-t border-slate-200/50 dark:border-slate-700/50 pt-2 text-xs">
+                    <div>
+                        <span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Annual Net Impact</span>
+                        <span id="kpiNetAnnual" class="font-bold text-sm">$0</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Net Present Value</span>
+                        <span id="kpiNPV" class="font-bold text-sm">$0</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Cost-Benefit Ratio</span>
+                        <span id="kpiCBRatio" class="font-bold text-sm">0.00</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Payback Period</span>
+                        <span id="kpiPayback" class="font-bold text-sm">0.0 yrs</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Visual Charts Container -->
+            <div class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-3 flex-1 flex flex-col space-y-4">
+                
+                <!-- Cash Flow Line Chart -->
+                <div>
+                    <h4 class="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <i class="fa-solid fa-chart-line"></i> Cumulative Cash Flow Projection
+                    </h4>
+                    <div class="h-44 relative">
+                        <canvas id="cashFlowChart"></canvas>
+                    </div>
+                </div>
+
+                <hr class="border-slate-200 dark:border-slate-700">
+
+                <!-- Pie Breakdowns -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <h4 class="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase mb-1 text-center">Revenues</h4>
+                        <div class="h-28 relative">
+                            <canvas id="revenuePieChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 class="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase mb-1 text-center">Expenses</h4>
+                        <div class="h-28 relative">
+                            <canvas id="expensePieChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Global State & Chart Handles
+        let map, drawnItems, drawControl;
+        let cashFlowChartInstance = null;
+        let revenuePieInstance = null;
+        let expensePieInstance = null;
+        let currentAreaAcres = 120; // Default matching initial input
+
+        // Preset Scenarios Data
+        const PRESETS = {
+            residential: {
+                acres: 140,
+                pop: 550,
+                resUnits: 180,
+                comParcels: 2,
+                roadMiles: 4.2,
+                assessedValue: 58000000,
+                taxRate: 0.65,
+                salesTax: 35000,
+                utilityRev: 52000,
+                permitRev: 14000,
+                publicSafetyCapita: 340,
+                roadMaintMile: 8500,
+                parksSanitationCapita: 110,
+                adminOverhead: 28000,
+                capitalCost: 950000,
+                oneTimeGrant: 200000,
+                horizon: 10,
+                discountRate: 3.5
+            },
+            commercial: {
+                acres: 45,
+                pop: 30,
+                resUnits: 5,
+                comParcels: 24,
+                roadMiles: 1.8,
+                assessedValue: 72000000,
+                taxRate: 0.65,
+                salesTax: 380000,
+                utilityRev: 95000,
+                permitRev: 45000,
+                publicSafetyCapita: 500,
+                roadMaintMile: 11000,
+                parksSanitationCapita: 40,
+                adminOverhead: 35000,
+                capitalCost: 1200000,
+                oneTimeGrant: 450000,
+                horizon: 10,
+                discountRate: 3.5
+            },
+            industrial: {
+                acres: 210,
+                pop: 0,
+                resUnits: 0,
+                comParcels: 12,
+                roadMiles: 5.5,
+                assessedValue: 95000000,
+                taxRate: 0.65,
+                salesTax: 120000,
+                utilityRev: 180000,
+                permitRev: 60000,
+                publicSafetyCapita: 200,
+                roadMaintMile: 14000,
+                parksSanitationCapita: 15,
+                adminOverhead: 45000,
+                capitalCost: 2200000,
+                oneTimeGrant: 800000,
+                horizon: 15,
+                discountRate: 4.0
+            },
+            rural: {
+                acres: 320,
+                pop: 110,
+                resUnits: 35,
+                comParcels: 1,
+                roadMiles: 6.8,
+                assessedValue: 18000000,
+                taxRate: 0.65,
+                salesTax: 8000,
+                utilityRev: 12000,
+                permitRev: 4000,
+                publicSafetyCapita: 280,
+                roadMaintMile: 7500,
+                parksSanitationCapita: 60,
+                adminOverhead: 15000,
+                capitalCost: 1400000,
+                oneTimeGrant: 150000,
+                horizon: 10,
+                discountRate: 3.5
+            }
+        };
+
+        // Initialize App on Window Load
+        window.onload = function() {
+            initMap();
+            calculateMetrics();
+        };
+
+        // Dark Mode Toggle Logic
+        function toggleDarkMode() {
+            const html = document.documentElement;
+            const icon = document.getElementById('themeIcon');
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                icon.className = 'fa-solid fa-moon';
+            } else {
+                html.classList.add('dark');
+                icon.className = 'fa-solid fa-sun';
+            }
+            // Refresh charts for theme change if needed
+            calculateMetrics();
+        }
+
+        // Initialize Leaflet Map with Drawing Tools
+        function initMap() {
+            // Default center: Austin / suburban fringe demo area
+            map = L.map('map').setView([30.2672, -97.7431], 12);
+
+            // OpenStreetMap Tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Layer for drawn shapes
+            drawnItems = new L.FeatureGroup();
+            map.addLayer(drawnItems);
+
+            // Initial Default Polygon (120 acres sample polygon)
+            const initialCoords = [
+                [30.275, -97.750],
+                [30.285, -97.750],
+                [30.285, -97.735],
+                [30.275, -97.735]
+            ];
+            const defaultPoly = L.polygon(initialCoords, { color: '#0284c7', weight: 2 }).addTo(drawnItems);
+            updatePolygonStats(defaultPoly);
+
+            // Drawing Toolbar Controls
+            drawControl = new L.Control.Draw({
+                edit: {
+                    featureGroup: drawnItems,
+                    remove: true
+                },
+                draw: {
+                    polygon: {
+                        shapeOptions: { color: '#0284c7', weight: 2 }
+                    },
+                    rectangle: {
+                        shapeOptions: { color: '#0284c7', weight: 2 }
+                    },
+                    circle: false,
+                    circlemarker: false,
+                    marker: false,
+                    polyline: false
+                }
+            });
+            map.addControl(drawControl);
+
+            // Leaflet Draw Event Listeners
+            map.on(L.Draw.Event.CREATED, function (e) {
+                drawnItems.clearLayers(); // Keep single active shape for simplicity
+                const layer = e.layer;
+                drawnItems.addLayer(layer);
+                updatePolygonStats(layer);
+            });
+
+            map.on(L.Draw.Event.EDITED, function (e) {
+                const layers = e.layers;
+                layers.eachLayer(function (layer) {
+                    updatePolygonStats(layer);
+                });
+            });
+
+            map.on(L.Draw.Event.DELETED, function () {
+                document.getElementById('calculatedAcres').innerText = '0.0';
+                document.getElementById('calculatedPerimeter').innerText = '0.00';
+            });
+        }
+
+        // Calculate Spatial Metrics from Drawn GIS Layers using Turf.js
+        function updatePolygonStats(layer) {
+            const geojson = layer.toGeoJSON();
+            const areaSqMeters = turf.area(geojson);
+            const acres = (areaSqMeters * 0.000247105).toFixed(1);
+            
+            // Length in miles
+            const perimeterMiles = (turf.length(geojson, { units: 'miles' })).toFixed(2);
+
+            document.getElementById('calculatedAcres').innerText = acres;
+            document.getElementById('calculatedPerimeter').innerText = perimeterMiles;
+            
+            // Sync with input form
+            document.getElementById('inputAcres').value = acres;
+            currentAreaAcres = parseFloat(acres);
+            
+            calculateMetrics();
+        }
+
+        // Manual Input of Acres Sync
+        function syncAcresInput() {
+            const val = parseFloat(document.getElementById('inputAcres').value) || 0;
+            document.getElementById('calculatedAcres').innerText = val.toFixed(1);
+            calculateMetrics();
+        }
+
+        // Load Preset Scenarios
+        function loadPresetScenario(key) {
+            const p = PRESETS[key];
+            if (!p) return;
+
+            document.getElementById('inputAcres').value = p.acres;
+            document.getElementById('calculatedAcres').innerText = p.acres;
+            document.getElementById('inputPopulation').value = p.pop;
+            document.getElementById('inputResUnits').value = p.resUnits;
+            document.getElementById('inputComParcels').value = p.comParcels;
+            document.getElementById('inputRoadMiles').value = p.roadMiles;
+            document.getElementById('inputAssessedValue').value = p.assessedValue;
+            document.getElementById('inputTaxRate').value = p.taxRate;
+            document.getElementById('inputSalesTax').value = p.salesTax;
+            document.getElementById('inputUtilityRev').value = p.utilityRev;
+            document.getElementById('inputPermitRev').value = p.permitRev;
+            document.getElementById('inputPublicSafetyCapita').value = p.publicSafetyCapita;
+            document.getElementById('inputRoadMaintMile').value = p.roadMaintMile;
+            document.getElementById('inputParksSanitationCapita').value = p.parksSanitationCapita;
+            document.getElementById('inputAdminOverhead').value = p.adminOverhead;
+            document.getElementById('inputCapitalCost').value = p.capitalCost;
+            document.getElementById('inputOneTimeGrant').value = p.oneTimeGrant;
+            document.getElementById('inputHorizon').value = p.horizon;
+            document.getElementById('inputDiscountRate').value = p.discountRate;
+            document.getElementById('discountVal').innerText = p.discountRate + '%';
+
+            calculateMetrics();
+        }
+
+        // Core Financial Analysis & CBA Computation Engine
+        function calculateMetrics() {
+            // Retrieve Inputs
+            const pop = parseFloat(document.getElementById('inputPopulation').value) || 0;
+            const roadMiles = parseFloat(document.getElementById('inputRoadMiles').value) || 0;
+            const assessedValue = parseFloat(document.getElementById('inputAssessedValue').value) || 0;
+            const taxRate = parseFloat(document.getElementById('inputTaxRate').value) || 0;
+            
+            // Revenues
+            const propTaxRev = (assessedValue / 100) * taxRate;
+            const salesTaxRev = parseFloat(document.getElementById('inputSalesTax').value) || 0;
+            const utilityRev = parseFloat(document.getElementById('inputUtilityRev').value) || 0;
+            const permitRev = parseFloat(document.getElementById('inputPermitRev').value) || 0;
+            const totalAnnualRev = propTaxRev + salesTaxRev + utilityRev + permitRev;
+
+            // Expenses
+            const publicSafetyExp = pop * (parseFloat(document.getElementById('inputPublicSafetyCapita').value) || 0);
+            const roadMaintExp = roadMiles * (parseFloat(document.getElementById('inputRoadMaintMile').value) || 0);
+            const parksSanitationExp = pop * (parseFloat(document.getElementById('inputParksSanitationCapita').value) || 0);
+            const adminExp = parseFloat(document.getElementById('inputAdminOverhead').value) || 0;
+            const totalAnnualExp = publicSafetyExp + roadMaintExp + parksSanitationExp + adminExp;
+
+            // One-Time Costs
+            const capOutlay = parseFloat(document.getElementById('inputCapitalCost').value) || 0;
+            const grants = parseFloat(document.getElementById('inputOneTimeGrant').value) || 0;
+            const netInitialInvestment = Math.max(0, capOutlay - grants);
+
+            // Metrics
+            const netAnnualImpact = totalAnnualRev - totalAnnualExp;
+            const cbRatio = totalAnnualExp > 0 ? (totalAnnualRev / totalAnnualExp) : 0;
+            const paybackPeriod = netAnnualImpact > 0 ? (netInitialInvestment / netAnnualImpact) : Infinity;
+
+            // Horizon & NPV Calculation
+            const horizonYears = parseInt(document.getElementById('inputHorizon').value) || 10;
+            const discountRate = (parseFloat(document.getElementById('inputDiscountRate').value) || 0) / 100;
+
+            let npv = -netInitialInvestment;
+            let cashFlowSeries = [-netInitialInvestment];
+            let cumulativeCashFlow = [-netInitialInvestment];
+            let yearLabels = ['Year 0'];
+
+            let runningCumulative = -netInitialInvestment;
+
+            for (let yr = 1; yr <= horizonYears; yr++) {
+                // Assuming modest 2% revenue growth and 2.5% inflation cost growth
+                const yrRev = totalAnnualRev * Math.pow(1.02, yr - 1);
+                const yrExp = totalAnnualExp * Math.pow(1.025, yr - 1);
+                const yrNet = yrRev - yrExp;
+
+                npv += yrNet / Math.pow(1 + discountRate, yr);
+                
+                runningCumulative += yrNet;
+                cashFlowSeries.push(yrNet);
+                cumulativeCashFlow.push(runningCumulative);
+                yearLabels.push('Yr ' + yr);
+            }
+
+            // Update UI KPIs
+            document.getElementById('kpiNetAnnual').innerText = formatCurrency(netAnnualImpact);
+            document.getElementById('kpiNetAnnual').className = `font-bold text-sm ${netAnnualImpact >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`;
+            
+            document.getElementById('kpiNPV').innerText = formatCurrency(npv);
+            document.getElementById('kpiNPV').className = `font-bold text-sm ${npv >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`;
+
+            document.getElementById('kpiCBRatio').innerText = cbRatio.toFixed(2);
+            document.getElementById('kpiPayback').innerText = isFinite(paybackPeriod) ? paybackPeriod.toFixed(1) + ' yrs' : 'N/A';
+
+            // Update Dynamic Recommendation Logic
+            updateRecommendation(netAnnualImpact, npv, cbRatio, paybackPeriod, horizonYears);
+
+            // Render Charts
+            renderCashFlowChart(yearLabels, cumulativeCashFlow);
+            renderPieCharts({
+                propTax: propTaxRev,
+                salesTax: salesTaxRev,
+                utility: utilityRev,
+                permit: permitRev
+            }, {
+                safety: publicSafetyExp,
+                roads: roadMaintExp,
+                parks: parksSanitationExp,
+                admin: adminExp
+            });
+        }
+
+        // Recommendation Engine Rules
+        function updateRecommendation(netAnnual, npv, cbRatio, payback, horizon) {
+            const card = document.getElementById('recommendationCard');
+            const badge = document.getElementById('recBadge');
+            const icon = document.getElementById('recIcon');
+            const desc = document.getElementById('recDescription');
+
+            if (npv > 0 && netAnnual > 0 && cbRatio >= 1.15) {
+                // Highly Feasible
+                card.className = "p-4 rounded-xl border bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-100 transition-all shadow-sm flex flex-col justify-between";
+                badge.innerText = "Highly Feasible / Recommended";
+                icon.className = "fa-solid fa-circle-check text-emerald-600 dark:text-emerald-400 text-xl";
+                desc.innerText = `Annexation generates a strong surplus of ${formatCurrency(netAnnual)}/yr with a favorable Cost-Benefit ratio of ${cbRatio.toFixed(2)}. Capital outlay is recovered within ${payback.toFixed(1)} years.`;
+            } else if (netAnnual >= 0 || npv >= 0) {
+                // Conditional / Marginal
+                card.className = "p-4 rounded-xl border bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-100 transition-all shadow-sm flex flex-col justify-between";
+                badge.innerText = "Marginal / Conditional";
+                icon.className = "fa-solid fa-triangle-exclamation text-amber-600 dark:text-amber-400 text-xl";
+                desc.innerText = `Annexation yields thin margins or relies heavily on upfront developer impact fees/grants. Consider negotiating utility surcharges or special assessment districts.`;
+            } else {
+                // Fiscal Deficit
+                card.className = "p-4 rounded-xl border bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-100 transition-all shadow-sm flex flex-col justify-between";
+                badge.innerText = "Fiscal Deficit / Not Advised";
+                icon.className = "fa-solid fa-circle-xmark text-rose-600 dark:text-rose-400 text-xl";
+                desc.innerText = `Servicing this area will create an annual net deficit of ${formatCurrency(Math.abs(netAnnual))}. Operating expenditures exceed direct municipal revenues generated.`;
+            }
+        }
+
+        // Render Cumulative Cash Flow Line Chart
+        function renderCashFlowChart(labels, data) {
+            const ctx = document.getElementById('cashFlowChart').getContext('2d');
+            const isDark = document.documentElement.classList.contains('dark');
+            const textColor = isDark ? '#94a3b8' : '#64748b';
+            const gridColor = isDark ? '#334155' : '#e2e8f0';
+
+            if (cashFlowChartInstance) cashFlowChartInstance.destroy();
+
+            cashFlowChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Cumulative Net Position ($)',
+                        data: data,
+                        borderColor: '#0284c7',
+                        backgroundColor: 'rgba(2, 132, 199, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: (context) => ` Cumulative: ${formatCurrency(context.parsed.y)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: textColor, font: { size: 10 } }, grid: { color: gridColor } },
+                        y: { 
+                            ticks: { 
+                                color: textColor, 
+                                font: { size: 10 },
+                                callback: (value) => '$' + (value / 1000).toFixed(0) + 'k'
+                            },
+                            grid: { color: gridColor }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render Breakdown Pie Charts
+        function renderPieCharts(revs, exps) {
+            const isDark = document.documentElement.classList.contains('dark');
+            const labelColor = isDark ? '#cbd5e1' : '#475569';
+
+            // Revenue Pie
+            const ctxRev = document.getElementById('revenuePieChart').getContext('2d');
+            if (revenuePieInstance) revenuePieInstance.destroy();
+            revenuePieInstance = new Chart(ctxRev, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Property Tax', 'Sales Tax', 'Utilities', 'Permits/Fees'],
+                    datasets: [{
+                        data: [revs.propTax, revs.salesTax, revs.utility, revs.permit],
+                        backgroundColor: ['#10b981', '#06b6d4', '#3b82f6', '#8b5cf6']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    cutout: '65%'
+                }
+            });
+
+            // Expense Pie
+            const ctxExp = document.getElementById('expensePieChart').getContext('2d');
+            if (expensePieInstance) expensePieInstance.destroy();
+            expensePieInstance = new Chart(ctxExp, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Public Safety', 'Road Maint.', 'Parks/Sanitation', 'Admin Overhead'],
+                    datasets: [{
+                        data: [exps.safety, exps.roads, exps.parks, exps.admin],
+                        backgroundColor: ['#f43f5e', '#f97316', '#eab308', '#64748b']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // Currency Formatting Helper
+        function formatCurrency(val) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits: 0
+            }).format(val);
+        }
+
+        // Export CBA Summary as CSV File
+        function exportCSV() {
+            const acres = document.getElementById('inputAcres').value;
+            const pop = document.getElementById('inputPopulation').value;
+            const npv = document.getElementById('kpiNPV').innerText;
+            const netAnnual = document.getElementById('kpiNetAnnual').innerText;
+            const cbRatio = document.getElementById('kpiCBRatio').innerText;
+            const payback = document.getElementById('kpiPayback').innerText;
+            const rec = document.getElementById('recBadge').innerText;
+
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Municipal Annexation CBA Report Summary\n";
+            csvContent += `Generated Date,${new Date().toLocaleDateString()}\n`;
+            csvContent += `Target Area (Acres),${acres}\n`;
+            csvContent += `Est. Population,${pop}\n`;
+            csvContent += `Feasibility Recommendation,${rec}\n`;
+            csvContent += `Net Annual Fiscal Impact,${netAnnual}\n`;
+            csvContent += `Net Present Value (NPV),${npv}\n`;
+            csvContent += `Cost-Benefit Ratio,${cbRatio}\n`;
+            csvContent += `Payback Period,${payback}\n`;
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `Annexation_CBA_Report_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
