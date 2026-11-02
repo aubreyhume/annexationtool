@@ -446,8 +446,8 @@
 
         // Initialize Leaflet Map with Drawing Tools
         function initMap() {
-            // Default center: Austin / suburban fringe demo area
-            map = L.map('map').setView([30.2672, -97.7431], 12);
+            // Default center: TR
+            map = L.map('map').setView([34.9676, -82.4435], 13);
 
             // OpenStreetMap Tiles
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -461,10 +461,10 @@
 
             // Initial Default Polygon (120 acres sample polygon)
             const initialCoords = [
-                [30.275, -97.750],
-                [30.285, -97.750],
-                [30.285, -97.735],
-                [30.275, -97.735]
+                [34.9750, -82.4500],
+                [34.9850, -82.4500],
+                [34.9850, -82.4350],
+                [34.9750, -82.4350]
             ];
             const defaultPoly = L.polygon(initialCoords, { color: '#0284c7', weight: 2 }).addTo(drawnItems);
             updatePolygonStats(defaultPoly);
