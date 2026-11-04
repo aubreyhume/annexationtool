@@ -446,43 +446,43 @@
 
         // Initialize Leaflet Map with Drawing Tools
        function initMap() {
-    // 1. Center map on Travelers Rest, SC
-    map = L.map('map').setView([34.9676, -82.4435], 12);
+        // 1. Center map on Travelers Rest, SC
+        map = L.map('map').setView([34.9676, -82.4435], 12);
 
-    // 2. Add CartoDB Positron Basemap Tiles
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-    }).addTo(map);
+        // 2. Add CartoDB Positron Basemap Tiles
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        }).addTo(map);
 
-    // 3. Define the styling rules for your official city boundary
-    const cityBoundaryStyle = {
-        color: '#2563eb',       // Bold royal blue border
-        weight: 3,              // Thicker line width
-        dashArray: '6, 6',      // Dashed line style for official limits
-        fillColor: '#3b82f6',
-        fillOpacity: 0.08       // Light transparent fill
-    };
+        // 3. Define the styling rules for your official city boundary
+        const cityBoundaryStyle = {
+            color: '#2563eb',       // Bold royal blue border
+            weight: 3,              // Thicker line width
+            dashArray: '6, 6',      // Dashed line style for official limits
+            fillColor: '#3b82f6',
+            fillOpacity: 0.08       // Light transparent fill
+            };
 
-    // 4. Fetch and load your official city limits GeoJSON file from GitHub
-    fetch('city_limits.geojson')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            L.geoJSON(data, { 
-                style: cityBoundaryStyle,
-                onEachFeature: function(feature, layer) {
-                    layer.bindPopup("<strong>Travelers Rest Municipal Boundary</strong>");
+        // 4. Fetch and load your official city limits GeoJSON file from GitHub
+        fetch('TR-Boundary.geojson')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
                 }
-            }).addTo(map);
-        })
-        .catch(error => {
-            console.error("Error loading city_limits.geojson:", error);
-        });
+                return response.json();
+            })
+            .then(data => {
+                L.geoJSON(data, { 
+                    style: cityBoundaryStyle,
+                    onEachFeature: function(feature, layer) {
+                        layer.bindPopup("<strong>Travelers Rest Municipal Boundary</strong>");
+                    }
+                }).addTo(map);
+            })
+            .catch(error => {
+                console.error("Error loading city_limits.geojson:", error);
+            });
             // Layer for drawn shapes
             drawnItems = new L.FeatureGroup();
             map.addLayer(drawnItems);
